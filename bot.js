@@ -1,4 +1,3 @@
-
 const http = require("http");
 const crypto = require("crypto");
 
@@ -55,21 +54,21 @@ async function telegram(method, data) {
   return result.result;
 }
 
-async function findUser(telegramId) {
+async function getUser(telegramId) {
   const params = new URLSearchParams({
-    select: "nova_id",
+    select: "nova_id,display_name",
     telegram_id: `eq.${telegramId}`,
     limit: "1"
   });
 
   const users = await db(`users?${params}`);
-  return users.length ? users[0].nova_id : null;
+  return users.length ? users[0] : null;
 }
 
 async function createUser(telegramId) {
-  const oldId = await findUser(telegramId);
+  const oldUser = await getUser(telegramId);
 
-  if (oldId) return oldId;
+  if (oldUser) return oldUser.nova_id;
 
   for (let i = 0; i < 10; i++) {
     const novaId = "+" + crypto.randomInt(10000000, 99999999);
@@ -90,8 +89,8 @@ async function createUser(telegramId) {
 
     } catch (error) {
       if (error.message.includes("409")) {
-        const saved = await findUser(telegramId);
-        if (saved) return saved;
+        const saved = await getUser(telegramId);
+        if (saved) return saved.nova_id;
         continue;
       }
 
@@ -109,25 +108,80 @@ async function sendMessage(chatId, text) {
   });
 }
 
+async function setUserName(telegramId, name) {
+  const params = new URLSearchParams({
+    telegram_id: `eq.${telegramId}`
+  });
+
+  await db(`users?${params}`, {
+    method: "PATCH",
+    headers: {
+      Prefer: "return=minimal"
+    },
+    body: JSON.stringify({
+      display_name: name
+    })
+  });
+}
+
 async function handleMessage(message) {
   if (!message.text || !message.from) return;
 
   const chatId = message.chat.id;
-  const command = message.text.trim().split(/\s+/)[0];
+  const telegramId = message.from.id;
+  const parts = message.text.trim().split(/\s+/);
+  const command = parts[0].split("@")[0].toLowerCase();
 
   if (command === "/start") {
     await sendMessage(
       chatId,
-      "🏴‍☠️ Добро пожаловать в NOVA PIRATE!\n\nНапиши /getnumber, чтобы получить свой NOVA ID."
+      "🏴‍☠️ Добро пожаловать в NOVA PIRATE!\n\n" +
+      "/getnumber — получить NOVA ID\n" +
+      "/setname Имя — сохранить имя\n" +
+      "/profile — открыть профиль"
     );
+    return;
   }
 
   if (command === "/getnumber" || command === "/myid") {
-    const id = await createUser(message.from.id);
+    const id = await createUser(telegramId);
 
     await sendMessage(
       chatId,
-      `Твой NOVA ID: ${id}\n\nТвой ID сохранён в базе данных! 🚀`
+      `Твой NOVA ID: ${id}\n\nID сохранён в базе данных! 🚀`
+    );
+    return;
+  }
+
+  if (command === "/setname") {
+    const name = parts.slice(1).join(" ").trim();
+
+    if (!name) {
+      await sendMessage(chatId, "Напиши имя после команды.\nПример: /setname Иван");
+      return;
+    }
+
+    if (name.length > 40) {
+      await sendMessage(chatId, "Имя должно быть не длиннее 40 символов.");
+      return;
+    }
+
+    await createUser(telegramId);
+    await setUserName(telegramId, name);
+
+    await sendMessage(chatId, `✅ Имя сохранено: ${name}`);
+    return;
+  }
+
+  if (command === "/profile") {
+    await createUser(telegramId);
+    const user = await getUser(telegramId);
+
+    await sendMessage(
+      chatId,
+      "👤 ТВОЙ ПРОФИЛЬ NOVA PIRATE\n\n" +
+      `Имя: ${user.display_name || "Не указано"}\n` +
+      `NOVA ID: ${user.nova_id}`
     );
   }
 }
@@ -167,7 +221,6 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, {
     "Content-Type": "text/plain"
   });
-
   res.end("NOVA PIRATE is running!");
 });
 
