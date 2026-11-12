@@ -1,0 +1,12 @@
+{
+  "name": "nova-pirate",
+  "version": "1.0.0",
+  "description": "NOVA PIRATE Telegram bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
