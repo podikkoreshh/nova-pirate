@@ -1,3 +1,4 @@
+
 const http = require("http");
 const crypto = require("crypto");
 
@@ -124,6 +125,17 @@ async function setUserName(telegramId, name) {
   });
 }
 
+async function findByNovaId(novaId) {
+  const params = new URLSearchParams({
+    select: "nova_id,display_name",
+    nova_id: `eq.${novaId}`,
+    limit: "1"
+  });
+
+  const users = await db(`users?${params}`);
+  return users.length ? users[0] : null;
+}
+
 async function handleMessage(message) {
   if (!message.text || !message.from) return;
 
@@ -138,7 +150,8 @@ async function handleMessage(message) {
       "🏴‍☠️ Добро пожаловать в NOVA PIRATE!\n\n" +
       "/getnumber — получить NOVA ID\n" +
       "/setname Имя — сохранить имя\n" +
-      "/profile — открыть профиль"
+      "/profile — открыть профиль\n" +
+      "/find +12345678 — найти пользователя"
     );
     return;
   }
@@ -157,12 +170,18 @@ async function handleMessage(message) {
     const name = parts.slice(1).join(" ").trim();
 
     if (!name) {
-      await sendMessage(chatId, "Напиши имя после команды.\nПример: /setname Иван");
+      await sendMessage(
+        chatId,
+        "Напиши имя после команды.\nПример: /setname Иван"
+      );
       return;
     }
 
     if (name.length > 40) {
-      await sendMessage(chatId, "Имя должно быть не длиннее 40 символов.");
+      await sendMessage(
+        chatId,
+        "Имя должно быть не длиннее 40 символов."
+      );
       return;
     }
 
@@ -183,6 +202,34 @@ async function handleMessage(message) {
       `Имя: ${user.display_name || "Не указано"}\n` +
       `NOVA ID: ${user.nova_id}`
     );
+    return;
+  }
+
+  if (command === "/find") {
+    const novaId = parts[1];
+
+    if (!novaId || !/^\+\d{8}$/.test(novaId)) {
+      await sendMessage(
+        chatId,
+        "Напиши NOVA ID правильно.\nПример: /find +12345678"
+      );
+      return;
+    }
+
+    const user = await findByNovaId(novaId);
+
+    if (!user) {
+      await sendMessage(chatId, "❌ Пользователь не найден.");
+      return;
+    }
+
+    await sendMessage(
+      chatId,
+      "🏴‍☠️ ПОЛЬЗОВАТЕЛЬ НАЙДЕН!\n\n" +
+      `Имя: ${user.display_name || "Не указано"}\n` +
+      `NOVA ID: ${user.nova_id}`
+    );
+    return;
   }
 }
 
